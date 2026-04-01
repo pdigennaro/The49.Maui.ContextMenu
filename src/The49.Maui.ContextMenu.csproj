@@ -33,7 +33,7 @@
 		<Version>$(VersionPrefix)$(VersionSuffix)</Version>
 		<Company>The49 Ltd.</Company>
 
-		<MauiVersion>10.0.50</MauiVersion>
+		<MauiVersion>10.0.51</MauiVersion>
 	</PropertyGroup>
 
 	<!-- Android -->
