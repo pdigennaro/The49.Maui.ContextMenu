@@ -56,6 +56,9 @@ public static partial class ContextMenu
     {
         if (bindable is CollectionView collectionView)
         {
+            // SetupMenu runs again on every handler change: don't subscribe twice
+            collectionView.ChildAdded -= ChildAddedToCollectionView;
+            collectionView.ChildRemoved -= ChildRemovedFromCollectionView;
             collectionView.ChildAdded += ChildAddedToCollectionView;
             collectionView.ChildRemoved += ChildRemovedFromCollectionView;
             ForEachElement(collectionView, element => AttachMenuToView(element, collectionView));

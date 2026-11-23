@@ -44,63 +44,92 @@ public static partial class ContextMenu
 
     static void MenuChanged(BindableObject bindable, object oldValue, object newValue)
     {
-        if (bindable is VisualElement visualElement)
+        if (bindable is not VisualElement visualElement)
         {
-            if (visualElement.Handler == null)
-            {
-                void updateMenu(object s, EventArgs e)
-                {
-                    MenuChanged(bindable, oldValue, newValue);
-                    visualElement.HandlerChanged -= updateMenu;
-                }
+            return;
+        }
 
-                visualElement.HandlerChanged += updateMenu;
-            }
-            else
-            {
-                if (oldValue == null && newValue != null)
-                {
-                    SetupMenu(visualElement);
-                }
-                if (oldValue != null && newValue == null)
-                {
-                    DisposeMenu(visualElement);
-                }
-            }
+        // MAUI can replace a view's handler (and its native view) at any time, e.g. when a page or the
+        // map is rebuilt: follow every handler change, not only the first one, or the menu is lost.
+        visualElement.HandlerChanged -= MenuHostHandlerChanged;
+        if (newValue != null)
+        {
+            visualElement.HandlerChanged += MenuHostHandlerChanged;
+        }
+
+        if (visualElement.Handler == null)
+        {
+            // set up by MenuHostHandlerChanged once the native view exists
+            return;
+        }
+
+        if (oldValue != null)
+        {
+            DisposeMenu(visualElement);
+        }
+        if (newValue != null)
+        {
+            SetupMenu(visualElement);
         }
     }
+
+    static void MenuHostHandlerChanged(object sender, EventArgs e)
+    {
+        var visualElement = (VisualElement)sender;
+
+        // the native view is gone or new: state kept for the previous one no longer applies
+        ResetMenuPlatformState(visualElement);
+
+        if (visualElement.Handler != null && GetMenu(visualElement) != null)
+        {
+            SetupMenu(visualElement);
+        }
+    }
+
     static void ClickCommandChanged(BindableObject bindable, object oldValue, object newValue)
     {
-        if (bindable is VisualElement visualElement)
+        if (bindable is not VisualElement visualElement)
         {
-            if (visualElement.Handler == null)
-            {
-                void updateClickCommand(object s, EventArgs e)
-                {
-                    ClickCommandChanged(bindable, oldValue, newValue);
-                    visualElement.HandlerChanged -= updateClickCommand;
-                }
+            return;
+        }
 
-                visualElement.HandlerChanged += updateClickCommand;
-            }
-            else
-            {
-                if (oldValue == null && newValue != null)
-                {
-                    SetupClickCommand(visualElement);
-                }
-                if (oldValue != null && newValue == null)
-                {
-                    DisposeClickCommand(visualElement);
-                }
-            }
+        visualElement.HandlerChanged -= ClickHostHandlerChanged;
+        if (newValue != null)
+        {
+            visualElement.HandlerChanged += ClickHostHandlerChanged;
+        }
+
+        if (visualElement.Handler == null)
+        {
+            return;
+        }
+
+        if (oldValue == null && newValue != null)
+        {
+            SetupClickCommand(visualElement);
+        }
+        if (oldValue != null && newValue == null)
+        {
+            DisposeClickCommand(visualElement);
+        }
+    }
+
+    static void ClickHostHandlerChanged(object sender, EventArgs e)
+    {
+        var visualElement = (VisualElement)sender;
+
+        ResetClickPlatformState(visualElement);
+
+        if (visualElement.Handler != null && GetClickCommand(visualElement) != null)
+        {
+            SetupClickCommand(visualElement);
         }
     }
 
     static void ShowMenuOnClickChanged(BindableObject bindable, object oldValue, object newValue)
     {
         var menu = GetMenu(bindable);
-        if (menu != null)
+        if (menu != null && (bindable as VisualElement)?.Handler != null)
         {
             DisposeMenu(bindable);
             SetupMenu(bindable);
@@ -108,6 +137,8 @@ public static partial class ContextMenu
     }
 
     static partial void SetupMenu(BindableObject bindable);
+    static partial void ResetMenuPlatformState(VisualElement visualElement);
+    static partial void ResetClickPlatformState(VisualElement visualElement);
     static partial void DisposeMenu(BindableObject bindable);
     static partial void SetupClickCommand(BindableObject bindable);
     static partial void DisposeClickCommand(BindableObject bindable);

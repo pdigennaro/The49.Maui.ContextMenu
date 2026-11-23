@@ -34,6 +34,17 @@ public partial class ContextMenu
         }
     }
 
+    // the stored interaction / tap recognizer belonged to the previous native view
+    static partial void ResetMenuPlatformState(VisualElement visualElement)
+    {
+        visualElement.SetValue(InteractionProperty, null);
+    }
+
+    static partial void ResetClickPlatformState(VisualElement visualElement)
+    {
+        visualElement.SetValue(TapGestureRecognizerProperty, null);
+    }
+
     static partial void DisposeMenu(BindableObject bindable)
     {
         if (bindable is VisualElement visualElement)
