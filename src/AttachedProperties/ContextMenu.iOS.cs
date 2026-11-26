@@ -109,20 +109,119 @@ public partial class ContextMenu
             visualElement.SetValue(InteractionProperty, null);
         }
     }
+    // the live MAUI Menu behind a button's UIMenu, kept so its bindings stay active
+    static readonly BindableProperty ControlMenuStateProperty = BindableProperty.CreateAttached("ControlMenuState", typeof(ControlMenuState), typeof(VisualElement), null);
+
     static void AttachControlMenu(UIButton button, VisualElement visualElement)
     {
+        // a UIMenu is a snapshot of the commands and properties of its Menu. It has to be
+        // rebuilt when the host gets a new BindingContext (CollectionView cells are recycled,
+        // otherwise the actions keep targeting the item the cell showed first) and when a bound
+        // property of an action changes (IsVisible, IsEnabled, Title, Command...)
+        visualElement.BindingContextChanged -= ControlMenuBindingContextChanged;
+        visualElement.BindingContextChanged += ControlMenuBindingContextChanged;
+
+        ((ControlMenuState)visualElement.GetValue(ControlMenuStateProperty))?.Detach();
+        visualElement.SetValue(ControlMenuStateProperty, null);
+
         var menuTemplate = GetMenu(visualElement);
-
-        var content = menuTemplate.CreateContent();
-
-        if (content is Menu menu)
+        if (menuTemplate?.CreateContent() is not Menu menu)
         {
-            BindableObject.SetInheritedBindingContext(menu, visualElement.BindingContext);
-            button.Menu = CreateMenu(menu);
-            button.ShowsMenuAsPrimaryAction = GetShowMenuOnClick(visualElement);
+            button.Menu = null;
+            return;
         }
 
+        BindableObject.SetInheritedBindingContext(menu, visualElement.BindingContext);
+        button.ShowsMenuAsPrimaryAction = GetShowMenuOnClick(visualElement);
+
+        var state = new ControlMenuState(button, menu);
+        visualElement.SetValue(ControlMenuStateProperty, state);
+        state.Attach();
     }
+
+    static void ControlMenuBindingContextChanged(object sender, EventArgs e)
+    {
+        if (sender is VisualElement visualElement && visualElement.Handler?.PlatformView is UIButton button)
+        {
+            AttachControlMenu(button, visualElement);
+        }
+    }
+
+    sealed class ControlMenuState
+    {
+        readonly WeakReference<UIButton> _button;
+        readonly Menu _menu;
+        bool _rebuildPending;
+        bool _detached;
+
+        public ControlMenuState(UIButton button, Menu menu)
+        {
+            _button = new WeakReference<UIButton>(button);
+            _menu = menu;
+        }
+
+        public void Attach()
+        {
+            Subscribe(_menu, true);
+            Rebuild();
+        }
+
+        public void Detach()
+        {
+            _detached = true;
+            Subscribe(_menu, false);
+            // drop the bindings to the old BindingContext
+            BindableObject.SetInheritedBindingContext(_menu, null);
+        }
+
+        void Subscribe(MenuElement element, bool subscribe)
+        {
+            element.PropertyChanged -= OnElementPropertyChanged;
+            if (subscribe)
+            {
+                element.PropertyChanged += OnElementPropertyChanged;
+            }
+
+            var children = element switch
+            {
+                Menu m => m.Children,
+                Group g => g.Children,
+                _ => null
+            };
+            if (children != null)
+            {
+                foreach (var child in children)
+                {
+                    Subscribe(child, subscribe);
+                }
+            }
+        }
+
+        void OnElementPropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == BindableObject.BindingContextProperty.PropertyName || _rebuildPending)
+            {
+                return;
+            }
+
+            // several properties often change together: rebuild once
+            _rebuildPending = true;
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                _rebuildPending = false;
+                Rebuild();
+            });
+        }
+
+        void Rebuild()
+        {
+            if (!_detached && _button.TryGetTarget(out var button))
+            {
+                button.Menu = CreateMenu(_menu);
+            }
+        }
+    }
+
     public static UIMenu CreateMenu(Menu menu)
     {
         UIMenuElement[] children = new UIMenuElement[menu.Children.Count];
